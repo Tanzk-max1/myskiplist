@@ -79,3 +79,16 @@ private:
     std::ifstream _file_reader;  // 文件读取器
 
 };
+
+template<typename K,typename V>
+int SkipList<K,V>::get_random_level(){
+    int k = 1;
+    while (rand()%2)
+    {
+        k++;
+    }
+    k = (k < _max_level)? k :_max_level;
+    // 判断变量 k 是否小于 _max_level。如果条件成立（即 k 小于 _max_level），则取 k 的值作为结果；
+    //如果条件不成立（即 k 大于或等于 _max_level），则取 _max_level 的值作为结果。
+    return k;
+}
