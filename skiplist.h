@@ -195,4 +195,53 @@ int SkipList<K,V>::insert_element(const K key,const V value) {
 
     return 0;
 }
+template <typename K,typename V>
+void SkipList<K,V>::delete_element(K key){
+    Node<K, V> *current = this->_header;
+    Node<K, V> *update[_max_level + 1];
+    // update 数组记录每层待删除节点的前驱节点，以便更新指针关系。
+    memset(update,0,sizeof(Node<K,V> *) * (_max_level + 1));
 
+    // 从最高层开始向下搜索待删除节点
+    for(int i = _skip_list_level; i>=0;i--){
+        while(current->forward[i] != NULL && current->forward[i] -> get_key() < key) {
+            current = current -> forward[i];
+        }
+        update[i] = current; //记录每层待删除节点的前驱
+    }
+    current = current->forward[0];
+
+    //确认找到了待删除的节点
+    if (current != NULL && current->get_key() == key) {
+        // 逐层更新指针，移除节点
+        for (int i = 0; i <= _skip_list_level; i++) {
+            if (update[i]->forward[i] != current) break;
+            update[i]->forward[i] = current->forward[i];
+        }
+        // 调整跳表的层级
+        while (_skip_list_level > 0 && _header->forward[_skip_list_level] == NULL) {
+            _skip_list_level--;
+        }
+        delete current; // 释放节点占用的内存
+        _element_count--; // 节点计数减一
+    }
+    return;
+}
+
+
+template <typename K, typename V>
+void SkipList<K, V>::display_list() {
+    // 从最上层开始向下遍历所有层
+    for (int i = _skip_list_level; i >= 0; i--) {
+        Node<K, V>* node = this->_header->forward[i]; // 获取当前层的头节点
+        std::cout << "Level " << i << ": ";
+        // 遍历当前层的所有节点
+        while (node != nullptr) {
+            // 打印当前节点的键和值，键值对之间用":"分隔
+            std::cout << node->get_key() << ":" << node->get_value() << ";";
+            // 移动到当前层的下一个节点
+            node = node->forward[i];
+        }
+        std::cout << std::endl; // 当前层遍历结束，换行
+    }
+}
