@@ -397,3 +397,116 @@ while(node != NULL) {
 }
 ```
 
+## 七. 生成和读取可持续化文件
+
+### 1.数据的保存
+
+考虑到键值对数据结构的特点，我们选择将数据保存到文件中，采用 key:value 格式进行存储，每行存储一个键值对。这种格式既简单又易于解析，适合快速的数据存取。
+
+目标文件结构如下：
+
+```
+1:store
+2:engine
+3:text
+```
+
+在 C++ 中，我们利用 std::ofstream 来打开文件、写入数据，并在数据写入完成后关闭文件。
+
+```c++
+template <typename K, typename V>
+void SkipList<K, V>::dump_file() {
+    _file_writer.open(STORE_FILE); // 打开文件
+    Node<K, V>* node = this->_header->forward[0]; // 从头节点开始遍历
+
+    while (node != nullptr) {
+        _file_writer << node->get_key() << ":" << node->get_value() << ";\n"; // 写入键值对
+        node = node->forward[0]; // 移动到下一个节点
+    }
+
+    _file_writer.flush(); // 刷新缓冲区，确保数据完全写入
+    _file_writer.close(); // 关闭文件
+}
+```
+> STORE_FILE 是代码中定义的一个路径
+
+### 2.数据的读取
+
+数据持久化之后，下一步就是实现其读取的过程。在这个过程中，我们面临两个挑战：<br>一是如何将文件中的key:value字符串解析为键值对；<br> 二是如何将读取的数据插入到内存中的跳表并建立索引。
+
+首先需要定义一个工具函数，用于验证字符串的合法性。这包括检查字符串是否为空，以及是否包含分隔符:。
+
+```c++
+template <typename K, typename V>
+bool SkipList<K, V>::is_valid_string(const std::string& str) {
+    return !str.empty() && str.find(delimiter) != std::string::npos;
+}
+```
+验证字符串合法性后，我们将字符串分割为键和值。
+```c++
+template <typename K, typename V>
+void SkipList<K, V>::get_key_value_from_string(const std::string& str, std::string* key, std::string* value) {
+    if (!is_valid_string(str)) {
+        return;
+    }
+    *key = str.substr(0, str.find(delimiter));
+    *value = str.substr(str.find(delimiter) + 1);
+}
+```
+
+我们可以继续实现从磁盘加载数据到跳表的过程。
+
+在对字符串进行校验了之后，此时我们就需要将磁盘中 key:value 串转换成内存中的 key 和 value 了。
+
+通过使用 std::string::substr 函数，我们可以将字符串切片，得到我们想要的 key 和 value。
+
+```c++
+template <typename K, typename V>
+void SkipList<K, V>::get_key_value_from_string(const std::string &str, std::string *key, std::string *value) {
+    if (!is_valid_string(str)) {
+        return;
+    }
+    *key = str.substr(0, str.find(delimiter));
+    *value = str.substr(str.find(delimiter) + 1, str.length());
+}
+```
+
+
+## 八.模块合成
+
+* 定义数据保存和加载时的文件路径
+* 定义互斥锁
+```c++
+#define STORE_FILE "store/dumpFile"  // 存储文件路径
+std::mutex mtx; // 定义互斥锁
+```
+
+对插入节点成员函数和删除节点成员函数进行加锁
+```c++
+// 只有在插入和删除的时候，才会进行加锁
+template <typename K, typename V>
+int SkipList<K, V>::insert_element(const K key, const V value) {
+    mtx.lock();  // 在函数第一句加锁
+    // ... 算法过程（省略）
+
+    if (current != NULL && current->get_key() == key) {
+        std::cout << "key: " << key << ", exists" << std::endl;
+        // 在算法流程中有一个验证 key 是否存在的过程
+        // 在此处需要提前 return，所以提前解锁
+        mtx.unlock();
+        return 1;
+    }
+
+    // ... 
+    mtx.unlock();  // 函数执行完毕后解锁
+    return 0;
+}
+
+template <typename K, typename V>
+void SkipList<K, V>::delete_element(K key) {
+    mtx.lock();  // 加锁
+    // ... 算法过程（省略）
+    mtx.unlock();  // 解锁
+    return;
+}
+```

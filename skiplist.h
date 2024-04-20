@@ -5,6 +5,10 @@
 #include <mutex>
 #include <fstream>
 
+#define STORE_FILE "store/dumpFile"//定义数据保存和加载时的文件路径
+std::mutex mtx;     // 定义互斥锁
+std::string delimiter = ":";
+
 //node类结构
 template <typename K,typename V>
 class Node {
@@ -15,7 +19,7 @@ public:
     K get_key() const ;
     V get_value() const ;
     void set_value(V);
-    void set_key(V) ;
+    
 
     Node<K,V> **forward;//在c++中，二维指针等于指针数组
     int node_level;
@@ -71,6 +75,10 @@ public:
     void load_file();                   // 从文件加载数据
     void clear(Node<K, V> *);           // 递归删除节点
     int size();                         // 跳表中的节点个数
+
+private:
+    void get_key_value_from_string(const std::string &str, std::string *key, std::string *value);
+    bool is_valid_string(const std::string &str);
 
 private:
     int _max_level;              // 跳表允许的最大层数
@@ -142,6 +150,7 @@ bool SkipList<K, V>::search_element(K key) {
 
 template <typename K,typename V>
 int SkipList<K,V>::insert_element(const K key,const V value) {
+    mtx.lock();
     Node<K,V> *current = this->_header;
     //用于在各层更新指针的数组
 
@@ -165,6 +174,7 @@ int SkipList<K,V>::insert_element(const K key,const V value) {
     //检查待的插入的节点的键是否已经存在
     if (current != NULL && current->get_key() == key) {
         // 键已存在，取消插入
+        mtx.unlock();
         return 1;
     }
 
@@ -192,11 +202,12 @@ int SkipList<K,V>::insert_element(const K key,const V value) {
         }
         _element_count++;
     }
-
+    mtx.unlock();
     return 0;
 }
 template <typename K,typename V>
 void SkipList<K,V>::delete_element(K key){
+    mtx.lock();  // 加锁
     Node<K, V> *current = this->_header;
     Node<K, V> *update[_max_level + 1];
     // update 数组记录每层待删除节点的前驱节点，以便更新指针关系。
@@ -225,6 +236,7 @@ void SkipList<K,V>::delete_element(K key){
         delete current; // 释放节点占用的内存
         _element_count--; // 节点计数减一
     }
+    mtx.unlock();  // 解锁
     return;
 }
 
@@ -244,4 +256,65 @@ void SkipList<K, V>::display_list() {
         }
         std::cout << std::endl; // 当前层遍历结束，换行
     }
+}
+
+template <typename K,typename V>
+void SkipList<K,V>::dump_file(){
+    _file_writer.open(STORE_FILE); //打开文件
+    Node<K,V>* node = this-> _header->forward[i];
+    //从头结点开始遍历
+
+    while (node!=nullptr) {
+        _file_writer << node->get_key() << ":"  << node->get_value() << ";\n";
+        //写入键值对
+        node = node -> forward[0];
+    }
+    _file_writer.flush();//刷新缓冲区，确保完全写入
+    _file_writer.close(); // 关闭文件
+}
+
+template <typename K, typename V>
+bool SkipList<K, V>::is_valid_string(const std::string& str) {
+    return !str.empty() && str.find(delimiter) != std::string::npos;
+    //用于验证字符串的合法性。检查字符串是否为空，以及是否包含分隔符:。
+}
+
+template <typename K, typename V>
+void SkipList<K, V>::get_key_value_from_string(const std::string& str, std::string* key, std::string* value) {
+    if (!is_valid_string(str)) {
+        return;
+    }
+    *key = str.substr(0, str.find(delimiter));
+    *value = str.substr(str.find(delimiter) + 1);
+}
+
+template <typename K, typename V>
+void SkipList<K, V>::get_key_value_from_string(const std::string &str, std::string *key, std::string *value) {
+    if (!is_valid_string(str)) {
+        return;
+    }
+    *key = str.substr(0, str.find(delimiter));
+    *value = str.substr(str.find(delimiter) + 1, str.length());
+}
+
+template <typename K, typename V>
+void SkipList<K, V>::load_file() {
+    _file_reader.open(STORE_FILE);
+    std::string line;
+    std::string *key = new std::string();
+    std::string *value = new std::string();
+
+    while (getline(_file_reader, line)) {
+        get_key_value_from_string(line, key, value);
+        if (key->empty() || value->empty()) {
+            continue;
+        }
+        // Define key as int type
+        insert_element(stoi(*key), *value);
+        std::cout << "key:" << *key << "value:" << *value << std::endl;
+    }
+
+    delete key;
+    delete value;
+    _file_reader.close();
 }
